@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -J electra_Results      # job name
-#SBATCH -o electra_1.o%j      # output and error file name (%j expands to jobID)
+#SBATCH -J electra_fixed_Results      # job name
+#SBATCH -o electra_fixed_1.o%j      # output and error file name (%j expands to jobID)
 #SBATCH -n 48                   # total number of tasks requested
 #SBATCH -N 1                    # number of nodes you want to run on
 #SBATCH -p gpu                  # queue (partition) -- defq, eduq, gpuq, shortq
@@ -16,4 +16,4 @@ conda activate llm_env
 pip3 install scikit-learn matplotlib seaborn
 
 # Your code goes here
-python electra_amazon.py
+python electra_amazon_fixed.py

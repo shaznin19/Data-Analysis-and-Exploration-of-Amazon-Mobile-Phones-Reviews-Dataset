@@ -146,7 +146,7 @@ end_train_time = perf_counter()
 training_time = end_train_time - start_train_time
 print(f"Training Time: {training_time:.2f} seconds")
 
-start__test_time = perf_counter()
+start_test_time = perf_counter()
 y_pred = model.predict(X_test)
 end_test_time = perf_counter()
 prediction_time = end_test_time - start_test_time
