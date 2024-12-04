@@ -39,7 +39,7 @@ on Amazon. It contains information such as:
 │   ├── electra_amazon.py
 │   ├── electra_amazon_fixed.py
 │   ├── rf_amazon.py
-│   ├── rf_log_amazon.py
+│   ├── logreg_amazon.py
 ├── borah-scripts
 │   ├── run_distilbert.sh
 │   ├── run_electra.sh
@@ -59,7 +59,7 @@ on Amazon. It contains information such as:
     ```
 
 ## Usage
-1. Run sentiment analysis using Distilbert:
+1. Run sentiment analysis using DistilBert:
     ```bash
     python src/distilbert_amazon.py
     ```
@@ -67,7 +67,11 @@ on Amazon. It contains information such as:
     ```bash
     python src/electra_amazon_fixed.py
     ```
-3. Run sentiment analysis using Random Forest and Logistic Regression:
+3. Run sentiment analysis using Random Forest:
+    ```bash
+    python src/rf_log_amazon.py
+    ```
+4. Run sentiment analysis using Logistic Regression:
     ```bash
     python src/rf_log_amazon.py
     ```

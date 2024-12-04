@@ -1,31 +1,17 @@
 # -*- coding: utf-8 -*-
 
-from transformers import TFDistilBertForSequenceClassification
-import tensorflow as tf
 import pandas as pd
-import keras
-import time
 from time import perf_counter
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, random_split
-from transformers import DistilBertModel, DistilBertTokenizerFast
-from transformers import ElectraTokenizer, ElectraForSequenceClassification
+from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, ElectraModel
 from torch.utils.data import DataLoader
-from transformers import AdamW, AutoModel
-from sklearn import metrics
-from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, classification_report, f1_score, precision_score, confusion_matrix
-from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import recall_score, f1_score, precision_score, confusion_matrix
 import matplotlib.pyplot as plt
-from collections import namedtuple
 import seaborn as sns
-from imblearn.under_sampling import RandomUnderSampler
-from wordcloud import WordCloud
 import nltk
 import re
-import string
 from nltk.corpus import stopwords
 from collections import Counter
 nltk.download('stopwords')
@@ -35,7 +21,8 @@ warnings.filterwarnings("ignore")
 from torch import cuda
 device = 'cuda' if cuda.is_available() else 'cpu'
 
-data_path = "/bsuhome/shazninsultana/Data_sci_project/Amazon_Unlocked_Mobile.csv"
+# Load the dataset
+data_path = "/data/Amazon_Unlocked_Mobile.csv"
 df = pd.read_csv(data_path).reset_index(drop = True)
 
 df["Brand Name"].fillna(value = "Missing", inplace = True)
@@ -44,12 +31,10 @@ df["Review Votes"].fillna(value = 0, inplace = True)
 df = df.dropna(subset=['Reviews'])
 df.isnull().sum()
 
-"""Load the stop words from nltk"""
-
+# Load the stop words from nltk
 stop_words = set(stopwords.words('english'))
 
-"""Function to preprocess a single review"""
-
+# Function to preprocess a single review
 def preprocess_review(review):
     # Convert all letters to lowercase
     review = review.lower()
@@ -61,19 +46,16 @@ def preprocess_review(review):
     # Remove stop words
     review = ' '.join([word for word in review.split() if word not in stop_words])
 
-    # 4. Remove words that start with '@'
+    # Remove words that start with '@'
     review = ' '.join([word for word in review.split() if not word.startswith('@')])
 
-    # 5. Replace repeated letters (more than 2 times) with 2 occurrences
+    # Replace repeated letters (more than 2 times) with 2 occurrences
     review = re.sub(r'(.)\1{2,}', r'\1\1', review)
     return review
 
-"""Apply preprocessing to the 'reviews' column"""
-
 df['preprocessed_reviews'] = df['Reviews'].apply(preprocess_review)
 
-"""Example: Calculating percentage reduction in feature size"""
-
+# Calculating percentage reduction in feature size
 def feature_size_reduction(original_reviews, preprocessed_reviews):
     original_words = Counter(' '.join(original_reviews).split())
     preprocessed_words = Counter(' '.join(preprocessed_reviews).split())
@@ -82,12 +64,9 @@ def feature_size_reduction(original_reviews, preprocessed_reviews):
     reduction_percentage = (original_size - preprocessed_size) / original_size * 100
     return original_size, preprocessed_size, reduction_percentage
 
-"""Calculate feature size reduction"""
-
 original_size, preprocessed_size, reduction_percentage = feature_size_reduction(df['Reviews'], df['preprocessed_reviews'])
 
-"""We'll assume ratings of 4 or 5 are positive, 3 is neutral, and 1 or 2 are negative"""
-
+# We'll assume ratings of 4 or 5 are positive, 3 is neutral, and 1 or 2 are negative
 def get_sentiment(rating):
     if rating >= 4:
         return 'Positive'
@@ -96,8 +75,7 @@ def get_sentiment(rating):
     else:
         return 'Negative'
 
-"""Apply the sentiment derivation function"""
-
+# Apply the sentiment derivation function
 df['Sentiment'] = df['Rating'].apply(get_sentiment)
 
 sentiment_counts = df['Sentiment'].value_counts()
@@ -112,25 +90,19 @@ def encode_cat(x):
         encode_dict[x] = len(encode_dict)
     return encode_dict[x]
 
-"""Apply encoding to the 'Sentiment' column again"""
-
 df['ENCODE_CAT'] = df['Sentiment'].apply(lambda x: encode_cat(x))
-
-"""Verify again"""
 
 print(df[['Reviews','Sentiment', 'ENCODE_CAT']].head())
 
 df['ENCODE_CAT'].value_counts()
 
-"""Defining some key variables that will be used later on in the training"""
-
+# Defining hyperparameters 
 MAX_LEN = 512
 TRAIN_BATCH_SIZE = 4
 VALID_BATCH_SIZE = 2
 TEST_BATCH_SIZE = 2
 EPOCHS = 15
 LEARNING_RATE = 1e-05
-# tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-cased')
 tokenizer = AutoTokenizer.from_pretrained("google/electra-small-discriminator")
 
 class Triage(Dataset):
@@ -139,11 +111,11 @@ class Triage(Dataset):
         self.tokenizer = tokenizer
         self.max_len = max_len
     def __getitem__(self, index):
-        Reviews = str(self.data.iloc[index]['Reviews'])  # Access the 'Reviews' column correctly
-        Reviews = " ".join(Reviews.split())  # Clean up any excessive whitespace
-        ENCODE_CAT = self.data.iloc[index]['ENCODE_CAT']  # Access 'Encoded_sentiment' column correctly
+        Reviews = str(self.data.iloc[index]['Reviews'])  
+        Reviews = " ".join(Reviews.split())  
+        ENCODE_CAT = self.data.iloc[index]['ENCODE_CAT']
 
-        # Tokenizing the review text using DistilBERT tokenizer
+        # Tokenizing the review text using Electra tokenizer
         inputs = self.tokenizer.encode_plus(
             Reviews,
             add_special_tokens=True,
@@ -163,8 +135,7 @@ class Triage(Dataset):
     def __len__(self):
         return len(self.data)
 
-"""Creating the dataset and dataloader for the neural network"""
-
+# Creating the dataset and dataloader for the neural network
 train_size = 0.6
 val_size = 0.2
 train_dataset = df.sample(frac=train_size, random_state=200)
@@ -204,8 +175,7 @@ training_loader = DataLoader(training_set, **train_params)
 validation_loader = DataLoader(validation_set, **valid_params)
 testing_loader = DataLoader(testing_set, **test_params)
 
-"""Creating the customized model, by adding a drop out and a dense layer on top of distil bert to get the final output for the model."""
-
+# Creating the model
 class CustomElectraForSequenceClassification(nn.Module):
     def __init__(self, num_labels=3):
         super(CustomElectraForSequenceClassification, self).__init__()
@@ -215,25 +185,21 @@ class CustomElectraForSequenceClassification(nn.Module):
         self.classifier = nn.Linear(256, num_labels)
     def forward(self, input_ids, attention_mask):
         electra_output = self.electra(input_ids=input_ids, attention_mask=attention_mask)
-        hidden_state = electra_output[0]  # (batch_size, sequence_length, hidden_size)
-        pooled_output = hidden_state[:, 0]  # we take the representation of the [CLS] token (first token)
+        hidden_state = electra_output[0]  
+        pooled_output = hidden_state[:, 0]
         pooled_output = self.pre_classifier(pooled_output)
         pooled_output = nn.ReLU()(pooled_output)
-        pooled_output = self.dropout(pooled_output) # regularization
+        pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         return logits
-
-"""Setting up the device for GPU usage"""
 
 model = CustomElectraForSequenceClassification()
 model.to(device)
 
-"""Creating the loss function and optimizer"""
-
 loss_function = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(params =  model.parameters(), lr=LEARNING_RATE)
 
-"""Function to calcuate the accuracy of the model"""
+# Function to calcuate the accuracy of the model
 
 def calcuate_accu(big_idx, targets):
     n_correct = (big_idx==targets).sum().item()
@@ -244,64 +210,21 @@ train_losses = []
 val_accuracies = []
 val_losses = []
 
-"""Training function"""
-
-# def train(epoch):
-#     model.train()
-#     tr_loss, n_correct, nb_tr_steps, nb_tr_examples = 0, 0, 0, 0
-#     start_train_time = perf_counter()  # Start timing for the epoch
-
-#     for _, data in enumerate(training_loader, 0):
-#         ids = data['ids'].to(device, dtype=torch.long)
-#         mask = data['mask'].to(device, dtype=torch.long)
-#         targets = data['targets'].to(device, dtype=torch.long)
-#         outputs = model(input_ids=ids, attention_mask=mask)
-#         loss = loss_function(outputs, targets)
-#         tr_loss += loss.item()
-#         big_val, big_idx = torch.max(outputs.data, dim=1)
-#         n_correct += calcuate_accu(big_idx, targets)
-#         nb_tr_steps += 1
-#         nb_tr_examples += targets.size(0)
-#         if _ % 5000 == 0:
-#             loss_step = tr_loss / nb_tr_steps
-#             accu_step = (n_correct * 100) / nb_tr_examples
-#             print(f"Training Loss per 5000 steps: {loss_step}")
-#             print(f"Training Accuracy per 5000 steps: {accu_step}")
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-
-#     end_train_time = perf_counter()  # End timing for the epoch
-#     epoch_time = end_train_time - start_train_time  # Calculate elapsed time
-#     print(f"Epoch {epoch} - Training Accuracy: {(n_correct*100)/nb_tr_examples}")
-#     print(f"Epoch {epoch} - Training Time: {epoch_time:.2f} seconds")
-
-#     # Calculate and store epoch metrics
-#     epoch_loss = tr_loss / nb_tr_steps
-#     epoch_accu = (n_correct * 100) / nb_tr_examples
-#     train_losses.append(epoch_loss)
-#     train_accuracies.append(epoch_accu)
-#     print(f"Epoch {epoch} - Training Accuracy: {epoch_accu:.2f}%")
-#     print(f"Epoch {epoch} - Training Loss: {epoch_loss:.4f}")
-#     print(f"Epoch {epoch} - Training Time: {epoch_time:.2f} seconds")
-
+# Training function
 def train(epoch):
     model.train()
     tr_loss, n_correct, nb_tr_steps, nb_tr_examples = 0, 0, 0, 0
-    start_train_time = perf_counter()  # Start timing for the epoch
+    start_train_time = perf_counter() 
 
-    # Training Loop
     for _, data in enumerate(training_loader, 0):
         ids = data['ids'].to(device, dtype=torch.long)
         mask = data['mask'].to(device, dtype=torch.long)
         targets = data['targets'].to(device, dtype=torch.long)
 
-        # Forward pass
         outputs = model(input_ids=ids, attention_mask=mask)
         loss = loss_function(outputs, targets)
         tr_loss += loss.item()
 
-        # Calculate accuracy
         big_val, big_idx = torch.max(outputs.data, dim=1)
         n_correct += calcuate_accu(big_idx, targets)
         nb_tr_steps += 1
@@ -314,12 +237,10 @@ def train(epoch):
             print(f"Training Loss per 5000 steps: {loss_step:.4f}")
             print(f"Training Accuracy per 5000 steps: {accu_step:.2f}%")
 
-        # Backpropagation and optimization
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-    # End of training epoch
     end_train_time = perf_counter()
     epoch_time = end_train_time - start_train_time
 
@@ -343,12 +264,10 @@ def train(epoch):
             mask = data['mask'].to(device, dtype=torch.long)
             targets = data['targets'].to(device, dtype=torch.long)
 
-            # Forward pass
             outputs = model(input_ids=ids, attention_mask=mask)
             loss = loss_function(outputs, targets)
             val_loss += loss.item()
 
-            # Calculate accuracy
             big_val, big_idx = torch.max(outputs.data, dim=1)
             n_correct_val += calcuate_accu(big_idx, targets)
             nb_val_steps += 1
@@ -363,19 +282,16 @@ def train(epoch):
     print(f"Epoch {epoch} - Validation Accuracy: {epoch_val_accu:.2f}%")
     print(f"Epoch {epoch} - Validation Loss: {epoch_val_loss:.4f}")
 
-    # Return metrics for plotting
     return epoch_train_loss, epoch_train_accu, epoch_val_loss, epoch_val_accu
 
-
-start_train_time = perf_counter()  # Start timing for the epoch
+# Calculate training time
+start_train_time = perf_counter()  
 for epoch in range(EPOCHS):
     train(epoch)
-    
-# End of training epoch
+
 end_train_time = perf_counter()
 epoch_time = end_train_time - start_train_time
 print(f"Training Time: {epoch_time:.2f} seconds")
-
 
 # Plot loss
 plt.figure(figsize=(10, 5))
@@ -387,7 +303,7 @@ plt.legend()
 plt.title('Training vs Validation Loss')
 plt.show()
 
-plt.savefig('train_val_loss_electra.png')
+plt.savefig('\results\train_val_loss_electra.png')
 # Plot accuracy
 plt.figure(figsize=(10, 5))
 plt.plot(train_accuracies, label='Training Accuracy')
@@ -398,7 +314,7 @@ plt.legend()
 plt.title('Training vs Validation Accuracy')
 plt.show()
 
-plt.savefig('train_val_accuracy_electra.png')
+plt.savefig('\results\train_val_accuracy_electra.png')
 
 def test(model, testing_loader):
     model.eval()
@@ -406,7 +322,8 @@ def test(model, testing_loader):
     n_correct = 0
     all_preds = []
     all_labels = []
-    start_test_time = perf_counter()  # Start timing for validation
+    # Calculate testing time
+    start_test_time = perf_counter() 
     with torch.no_grad():
         for _, data in enumerate(testing_loader, 0):
             ids = data['ids'].to(device, dtype=torch.long)
@@ -420,15 +337,13 @@ def test(model, testing_loader):
             nb_tr_steps += 1
             nb_tr_examples += targets.size(0)
 
-            # Append predictions and targets for metric calculation
-            all_preds.extend(big_idx.cpu().numpy())  # Move to CPU and convert to NumPy array
-            all_labels.extend(targets.cpu().numpy())  # Move to CPU and convert to NumPy array
+            all_preds.extend(big_idx.cpu().numpy())
+            all_labels.extend(targets.cpu().numpy())
 
-    end_test_time = perf_counter()  # End timing for validation
-    testing_time = end_test_time - start_test_time  # Calculate elapsed time
+    end_test_time = perf_counter()
+    testing_time = end_test_time - start_test_time
     print(f"Testing Time: {testing_time:.2f} seconds")
 
-    # Calculate and store epoch metrics
     epoch_loss = tr_loss / nb_tr_steps
     epoch_accu = (n_correct * 100) / nb_tr_examples
     
@@ -445,8 +360,6 @@ def test(model, testing_loader):
 
     return epoch_accu, precision, recall, f1, conf_matrix
 
-"""Run the validation function"""
-
 acc, precision, recall, f1, conf_matrix = test(model, testing_loader)
 
 print(f"Accuracy on test data = {acc:.2f}%")
@@ -456,13 +369,12 @@ print(f"F1-Score = {f1:.2f}")
 print("Confusion Matrix Electra:")
 print(conf_matrix)
 
-"""Plot the confusion matrix"""
-
+# Plot confusion matrix
 plt.figure(figsize=(8, 6))
 sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=['Negative', 'Neutral', 'Positive'], yticklabels=['Negative', 'Neutral', 'Positive'])
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Confusion Matrix Electra')
 plt.show()
-plt.savefig('confusion_matrix_electra.png')
+plt.savefig('\results\confusion_matrix_electra.png')
 
