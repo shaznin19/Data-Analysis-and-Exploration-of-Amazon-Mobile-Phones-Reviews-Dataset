@@ -73,5 +73,9 @@ on Amazon. It contains information such as:
     ```
 4. Run sentiment analysis using Logistic Regression:
     ```bash
-    python src/rf_log_amazon.py
+    python src/logreg_amazon.py
+    ```
+5. Run sentiment analysis using LSTM:
+    ```bash
+    python src/lstm_amazon_fixed.py
     ```
